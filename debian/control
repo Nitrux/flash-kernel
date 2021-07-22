@@ -12,7 +12,7 @@ Vcs-Git: https://salsa.debian.org/installer-team/flash-kernel.git
 Rules-Requires-Root: no
 
 Package: flash-kernel
-Architecture: arm64 armel armhf
+Architecture: arm64
 Depends: ${misc:Depends},
          devio,
          initramfs-tools (>= 0.92f),
@@ -32,7 +32,7 @@ Package: flash-kernel-installer
 Section: debian-installer
 Priority: standard
 Package-Type: udeb
-Architecture: arm64 armel armhf
+Architecture: arm64
 XB-Subarchitecture: armadaxp exynos5 generic-lpae keystone kirkwood orion5x s3c24xx mx5 omap omap4 xgene generic
 Provides: bootable-system
 Depends: cdebconf-udeb, installed-base
