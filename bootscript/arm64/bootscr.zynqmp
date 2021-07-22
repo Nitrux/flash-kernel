@@ -1,0 +1,119 @@
+# This is a boot script for U-Boot
+# Generate boot.scr:
+# mkimage -c none -A arm -T script -d boot.cmd boot.scr
+# For initrd, when using a file override:
+# mkimage -A arm -O linux -T ramdisk -d initrd.img rootfs.cpio.gz.u-boot
+# Kernel "Image" file must be of EFI type:
+# - Get vmlinuz from Ubuntu rootfs and uncompress
+# system.dtb is a normal dtb file
+#
+################
+
+@@UBOOT_ENV_EXTRA@@
+
+for boot_target in ${boot_targets};
+do
+	if test "${boot_target}" = "jtag" ; then
+		booti 0x00200000 0x04000000 0x00100000
+		exit;
+	fi
+	if test "${boot_target}" = "mmc0" || test "${boot_target}" = "mmc1" ; then
+		# Load alternative bitstream if present
+		if test -e ${devtype} ${devnum}:${distro_bootpart} /system.bit; then
+			echo "Loading alternative bitstream"
+			load ${devtype} ${devnum}:${distro_bootpart} 0x10000000 system.bit
+			fpga load 0 0x10000000 $filesize
+		fi
+		# Load different cma on zynqmp boards
+		setenv bootargs "earlycon console=ttyPS0,115200 console=tty1 root=/dev/mmcblk0p2 uio_pdrv_genirq.of_id=generic-uio"
+		fdt addr $fdtcontroladdr
+		# For ZCU: ZynqMP ZCU10* Rev*
+		# For Kria: ZynqMP K26 Rev*
+		fdt get value model_test / model
+		if setexpr model_test gsub '.*104.*' 104; then
+			setenv bootargs "${bootargs} cma=700M"
+		elif setexpr model_test gsub '.*106.*' 106; then
+			setenv bootargs "${bootargs} cma=1200M"
+		else
+			setenv bootargs "${bootargs} cma=1000M"
+		fi
+		# Get custom values from /etc/default/u-boot-xlnx
+		setenv bootargs "@@LINUX_KERNEL_CMDLINE_DEFAULTS@@ ${bootargs} @@LINUX_KERNEL_CMDLINE@@"
+		img_addr=-
+		initrd_addr=-
+
+		# Take dtb from boot image unless Kria, where we take from FIT
+		if setexpr model_test gsub '.*K26.*' K26; then
+			dtb_addr=0x10000000
+		else
+			dtb_addr=$fdtcontroladdr
+		fi
+
+		if test -e ${devtype} ${devnum}:${distro_bootpart} /Image; then
+			echo "Loading Image"
+			img_addr=0x00200000
+			load ${devtype} ${devnum}:${distro_bootpart} ${img_addr} Image;
+		fi
+		if test -e ${devtype} ${devnum}:${distro_bootpart} /system.dtb; then
+			echo "Loading system.dtb"
+			dtb_addr=0x70000000
+			load ${devtype} ${devnum}:${distro_bootpart} ${dtb_addr} system.dtb;
+		fi
+		if test -e ${devtype} ${devnum}:${distro_bootpart} /rootfs.cpio.gz.u-boot; then
+			echo "Loading rootfs.cpio.gz.u-boot"
+			initrd_addr=0x04000000
+			load ${devtype} ${devnum}:${distro_bootpart} ${initrd_addr} rootfs.cpio.gz.u-boot
+		fi
+
+		@@UBOOT_PREBOOT_EXTRA@@
+
+		if test $img_addr = "-" || test $initrd_addr = "-"; then
+			if test -e ${devtype} ${devnum}:${distro_bootpart} /image.fit; then
+				echo "Loading image.fit"
+				load ${devtype} ${devnum}:${distro_bootpart} 0x10000000 image.fit;
+				if test $img_addr = "-"; then
+					img_addr=0x10000000
+				fi
+				if test $initrd_addr = "-"; then
+					initrd_addr=0x10000000
+				fi
+			fi
+		fi
+		if test "${img_addr}" -eq "0x10000000"; then
+			bootm ${img_addr} ${initrd_addr} ${dtb_addr}
+		elif test "${img_addr}" -eq "0x00200000"; then
+			booti ${img_addr} ${initrd_addr} ${dtb_addr}
+		fi
+		echo "No kernel found in ${devtype}"
+		exit;
+	fi
+	if test "${boot_target}" = "xspi0" || test "${boot_target}" = "qspi" || test "${boot_target}" = "qspi0"; then
+		sf probe 0 0 0;
+		if test "image.fit" = "image.fit"; then
+			sf read 0x10000000 0xF00000 0x6400000;
+			bootm 0x10000000;
+			exit;
+		fi
+		if test "image.fit" = "Image"; then
+			sf read 0x00200000 0xF00000 0x1D00000;
+			sf read 0x04000000 0x4000000 0x4000000
+			booti 0x00200000 0x04000000 0x00100000
+			exit;
+		fi
+		exit;
+	fi
+	if test "${boot_target}" = "nand" || test "${boot_target}" = "nand0"; then
+		nand info
+		if test "image.fit" = "image.fit"; then
+			nand read 0x10000000 0x4100000 0x6400000;
+			bootm 0x10000000;
+			exit;
+		fi
+		if test "image.fit" = "Image"; then
+			nand read 0x00200000 0x4100000 0x3200000;
+			nand read 0x04000000 0x7800000 0x3200000;
+			booti 0x00200000 0x04000000 0x00100000
+			exit;
+		fi
+	fi
+done
