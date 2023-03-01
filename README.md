@@ -1,4 +1,4 @@
-# flash-kernel [![Build Status](https://travis-ci.org/Nitrux/flash-kernel.svg?branch=main)](https://travis-ci.org/Nitrux/flash-kernel)
+# flash-kernel
 
 Utility to make certain embedded devices bootable
 
